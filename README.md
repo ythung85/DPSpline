@@ -53,3 +53,10 @@ The above code will return the average MSPE over 10 trials and its standard devi
 | :-----:| :------: |:-----:| :-----:| :-----:| :-----:|
 | d=2  | DNN-S | 0.0056 (0.0012) | 0.0042 (0.0007) | 0.0026 (0.0005) | 0.0027 (0.0009) |
 | d=2  | DPS   | **0.0041** (0.0017) | **0.0018** (0.0004) | **0.0015** (0.0003) | **0.0011** (0.0004) |
+
+## Brain tumor image classification
+
+## Chip data
+
+## Simulation
+The simulation for Table 4, brain tumor image classification, and chip data will be demonstrated in jupyter notebook.
