@@ -56,3 +56,9 @@ The above code will return the average MSPE over 10 trials and its standard devi
 
 ## Simulation
 The simulation for *Table 4*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
+
+✅ Brain Tumor MRI Image classification: `./demo_simulation/Sim_Braintumor.ipynb`
+
+✅ Chip data classification: `./demo_simulation/Sim_Chip.ipynb`
+
+✅ Table 4 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
