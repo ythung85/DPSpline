@@ -1,5 +1,7 @@
 library(MaxPro)
 library(ggplot2)
+library(rkriging)
+
 # Link: https://cran.r-project.org/web/packages/MaxPro/MaxPro.pdf
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -11,32 +13,21 @@ CCCtest<-CandPoints(N=250,p_cont=9)
 
 # validation on testing data and select the parameter with highest eta value.
 
-write.csv(CCCtrain,"/Users/a080528/Desktop/Github/DBspline/trainsample.csv", row.names = FALSE)
-write.csv(CCCtest,"/Users/a080528/Desktop/Github/DBspline/testsample.csv", row.names = FALSE)
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-#  Generate the maximum projection (MaxPro) Latin hypercube #
-#  design for continuous factors based on a simulated annea #
-#  -ling algorithm                                          #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-obj<-MaxProLHD(n = 10, p = 3)
-obj$Design
+write.csv(CCCtrain,"./dataset/trainsample.csv", row.names = FALSE)
+write.csv(CCCtest,"./dataset/testsample.csv", row.names = FALSE)
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #                         Kriging                           #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-library(rkriging)
-X = read.csv('/Users/a080528/Desktop/Github/DBspline/Layer-wise optimization/output_feature.csv')
-y = read.csv('/Users/a080528/Desktop/Github/DBspline/Layer-wise optimization/output_eta.csv')
+X = read.csv('./dataset/output_feature.csv')
+y = read.csv('./dataset/output_eta.csv')
 X = as.matrix(X)
 y = as.matrix(y)
 
 
-testX = read.csv('/Users/a080528/Desktop/Github/DBspline/Layer-wise optimization/test_output_feature.csv')
-testy = read.csv('/Users/a080528/Desktop/Github/DBspline/Layer-wise optimization/test_output_eta.csv')
+testX = read.csv('./dataset/test_output_feature.csv')
+testy = read.csv('./dataset/test_output_eta.csv')
 testX = as.matrix(testX)
 testy = as.matrix(testy)
 
@@ -89,11 +80,5 @@ dft <- data.frame (
 
 ggplot(data = dft, aes(x = t, y = vst)) + 
   geom_ribbon(aes(ymin = lvst, ymax = uvst), fill = "deepskyblue", alpha = 0.2) + geom_line(aes(y = vst), color = "white", size = 1.5) +geom_point() + 
-  ggtitle("Regression Line, 95% Confidence and Prediction Bands")
+  ggtitle("Regression Line, 95% Confidence and Prediction Bands") + ylab('S(t)')
 
-
-ggplot(dft, aes(t, vst)) +    
-  geom_point()+ 
-  # geom_ribbon function is used to add confidence interval 
-  geom_ribbon(aes(ymin = lvst, ymax = uvst),  
-              alpha = 0.2)
