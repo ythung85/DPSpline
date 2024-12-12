@@ -68,6 +68,8 @@ The simulation for *Table 4*, *brain tumor image classification*, and *chip data
 
 ✅ Table 4 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
 
+✅ Double descent: `./demo_simulation/Sim_DoubleDescent.ipynb`
+
 ✅ Surrogate model for Chip data: `./demo_simulation/Sim_Chip.ipynb`
 
 ### Chip Data
