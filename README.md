@@ -59,6 +59,17 @@ The simulation for *Table 4*, *brain tumor image classification*, and *chip data
 
 ✅ Brain Tumor MRI Image classification: `./demo_simulation/Sim_Braintumor.ipynb`
 
-✅ Chip data classification: `./demo_simulation/Sim_Chip.ipynb`
-
 ✅ Table 4 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
+
+✅ Surrogate model for Chip data: `./demo_simulation/Sim_Chip.ipynb`
+
+### Chip Data
+For building the surrogate model for chip data, we utilize python and R for convenience. Following the steps below, you can replicate the experiment in Section 6.2 for building the survival function $S(t)$ for chip data.
+
+- Use the `./demo_simulation/MaxPro_Sampling.R` to generate Candidate Design Points Randomly for Various Types of Factors related to chip data.
+- By the sampling matrix from `Maxpro`, we can run DPS on `./demo_simulation/Sim_Chip.ipynb` for prediction.
+- Besides the prediction from DPS, we extract the value of last hidden layer in DPS and feed it to Gaussian process in `MaxPro_Sampling.R`.
+- According to the property of Gaussian process, we can construct the survival function and its confidence interval over its lifespan.
+
+![|100](./imgs/PIplot2.png)
+
