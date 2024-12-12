@@ -11,10 +11,17 @@ pip3 install -r requirements.txt
 
 # Simulation
 ## 100 individual trials for Example 1
+The true function for example 1 is formulated as below:
 ```math
-    y = \exp\{2\sin(0.5\pi x_1) + 0.5\cos(2.5\pi x_2) + \epsilon\}
+    y = \exp\{2\sin(0.5\pi x_1) + 0.5\cos(2.5\pi x_2)\}
 ```
-The user can customize the specific size for training and testing. For instance, we assume the training size = 800 and the testing size = 200
+We add noise $\epsilon$ to the true function as:
+```math
+    \tilde{y}= y+\epsilon,\ \epsilon\sim\mathcal{N}(0, \sigma^2)
+```
+where $\sigma^2 = 0.05$ Var $(y)$.
+
+The user can customize the specific size for training and testing. For instance, we assume the training size = 800 and the testing size = 200.
 
 For 1 Layer DPS:
 ```
