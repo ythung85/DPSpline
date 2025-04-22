@@ -328,8 +328,8 @@ if __name__ == "__main__":
 					
 				else:
 					if loss < bloss:
-						#print('Current loss: ', loss.item(), ' | , previous best loss: ', bloss, ' | saving best model ...')
-						torch.save(MBS.state_dict(), './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1))
+						print('Current loss: ', loss.item(), ' | , previous best loss: ', bloss, ' | saving best model ...')
+						#torch.save(MBS.state_dict(), './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1))
 						bloss = loss.item()
 						tpat = 0
 					tpat += 1
