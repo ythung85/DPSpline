@@ -188,7 +188,7 @@ class MPSv3(nn.Module):
         self.inter['basic2'] = sp2out
 
         ln2out = self.ln2(sp2out)
-        ln2out = self.relu(ln2out)
+        #ln2out = self.relu(ln2out)
         
         return ln2out
 
