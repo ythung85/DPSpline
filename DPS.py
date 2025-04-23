@@ -7,16 +7,25 @@ import numpy as np
 
 
 parser = ArgumentParser()
-parser.add_argument('--trainsize', type = int)
-parser.add_argument('--testsize', type = int)
-parser.add_argument('--data', type = str)
-parser.add_argument('--Fin', type = int)
-parser.add_argument('--Fout', type = int)
-parser.add_argument('--nk', type = int)
-parser.add_argument('--nm', type = int)
-parser.add_argument('--rep', type = int)
-parser.add_argument('--nl', type= int)
-parser.add_argument('--lr', type = float)
+
+# Basic Setting
+parser.add_argument('--trainsize', default = 400, type = int, help = 'training data size')
+parser.add_argument('--testsize', default = 400, type = int, help = 'testing data size')
+parser.add_argument('--data', type = str, help = 'simulated data type')
+parser.add_argument('--Fin', default = 2, type = int, help = 'input dimension')
+parser.add_argument('--Fout', default = 1, type = int, help = 'output dimension')
+
+# Neural Architecture
+parser.add_argument('--nk', default = 10, type = int, help = 'number of knot')
+parser.add_argument('--nm', default = 50, type = int, help = 'number of neuron')
+parser.add_argument('--nl', default = 1, type= int, help = 'number of spline-layer')
+parser.add_argument('--dp', default = 0.0, type = float, help = 'dropout percentage')
+
+# Training Setting
+parser.add_argument('--nepoch', default = 1000, type = int, help = 'total number of training epochs')
+parser.add_argument('--rep', default = 1, type = int, help = 'Number of different initialization used to train the model')
+parser.add_argument('--lr', default = 1e-3, type = float, help = 'initial learning rate')
+parser.add_argument('--fine_tune_epoch', default = 1000, type = int, help = 'total number of fine tuning epochs')
 
 args = parser.parse_args()
 
@@ -175,7 +184,7 @@ def ECM_layersise_update(model, par, Lambda, x, y):
     
     with torch.no_grad():
         DPSy = model(x)
-        Update_Train_Loss = np.round(criterion(y, DPSy.detach()).item(), 5)
+        #Update_Train_Loss = np.round(criterion(y, DPSy.detach()).item(), 5)
         GCV = np.round((torch.norm(y - DPSy)/(Size[-1]-torch.trace(Project_matrix))).item(), 5)
     
     return model, GCV
@@ -250,7 +259,7 @@ class BSL(nn.Module):
         return knots
     
     def basis_function2(self, x, spl):
-        basis_output = spl.fit_transform(x.cpu().numpy())
+        basis_output = spl.fit_transform(x.cpu().detach().numpy())
         return basis_output
             
     def forward(self, x):
@@ -336,7 +345,7 @@ class StackBS_block(nn.Module):
     def __init__(self, block, degree, num_knots, num_neurons, num_blocks, dropout = 0.0, bias = True):
         super().__init__()
         self.model = nn.ModuleDict({
-            f'block_{i}': block(degree = degree, num_knots = num_knots, num_neurons = num_neurons)
+            f'block_{i}': block(degree = degree, num_knots = num_knots, num_neurons = num_neurons, dropout = dropout, bias = bias)
             for i in range(num_blocks)
         })
 
@@ -346,14 +355,14 @@ class StackBS_block(nn.Module):
         return x
     
 class DPS(nn.Module):
-    def __init__(self, input_dim, degree, num_knots, num_neurons, num_bsl, output_dim, bias):
+    def __init__(self, input_dim, degree, num_knots, num_neurons, num_bsl, dropout, output_dim, bias):
         super(DPS, self).__init__()
         self.num_neurons = num_neurons
         self.num_knots = num_knots
         self.ln1 = nn.Linear(input_dim, num_neurons)
         #self.nm1 = NormLayer() 
         #self.sp1 = BSL(degree = degree, num_knots = num_knots, num_neurons = num_neurons, bias = True)
-        self.Spline_block = StackBS_block(BSpline_block, degree = degree, num_knots = num_knots, num_neurons = num_neurons, num_blocks = num_bsl)
+        self.Spline_block = StackBS_block(BSpline_block, degree = degree, num_knots = num_knots, num_neurons = num_neurons, num_blocks = num_bsl, dropout = dropout)
         self.ln2 = nn.Linear(num_neurons, output_dim)
         #self.inter = {}
         
@@ -443,11 +452,15 @@ if __name__ == "__main__":
     Dtype = args.data
     ndim = args.Fin
     learning_rate = args.lr
+    nepoch = args.nepoch
+    fine_tune_epoch = args.fine_tune_epoch
+
     ndf = args.rep
     nm = args.nm
     nk = args.nk 
     nl = args.nl   
     Fout = args.Fout
+    dp = args.dp
     data = {}
 
     for d in range(ndf):
@@ -479,13 +492,13 @@ if __name__ == "__main__":
         conv = False
 
         while not conv:
-            DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, output_dim = Fout, bias = True).to(device)
+            DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
             learning_r = 1e-1
             optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
-            Iteration = 10000; bloss_list = []; tor = 1e-5; lr_tor = 1e-6
+            bloss_list = []; tor = 1e-5; lr_tor = 1e-6
             patientc = 30; patientr = 10; tpat = 0; bloss = 9999
 
-            for t in range(Iteration):
+            for t in range(nepoch):
                 # Forward pass: Compute predicted y by passing x to the modelsp
                 pyb_af = DeepBS(X_train)
                 loss = criterion(y_train, pyb_af); bloss_list.append(loss.item())
@@ -539,7 +552,7 @@ if __name__ == "__main__":
     
         ## ECM -> Find optimal Lambda
         with torch.no_grad():
-            model = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = 2, output_dim = Fout, bias = True).to(device)
+            model = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
             model.load_state_dict(torch.load( './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
             BMSPE = criterion(y_test, model(X_test).detach()).item()
             print(BMSPE)
@@ -553,10 +566,9 @@ if __name__ == "__main__":
     print('Start runing fast-tuning ...')
 
 
-    Fast_tun_epoch = 1001
     for d in range(ndf):
         print('Dataset '+str(d+1))
-        DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = 2, output_dim = Fout, bias = True).to(device)
+        DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
         DeepPS.load_state_dict(torch.load( './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
         optimizer = torch.optim.Adam(DeepPS.parameters(), lr= 1e-2)
         n = X_train.size()[0]
@@ -567,7 +579,7 @@ if __name__ == "__main__":
             block = getattr(model.Spline_block.model, f'block_{l}')
             DPS_Wstack.append(getattr(block.block.BSL, 'control_p').data)
 
-        for t in range(1, Fast_tun_epoch):
+        for t in range(1, fine_tune_epoch):
                                                 
             # Forward pass: Compute predicted y by passing x to the modelsp
             pyb_af = DeepPS(X_train)
