@@ -54,22 +54,42 @@ def norm(x):
     return (x-torch.min(x))/(torch.max(x)-torch.min(x))
 
 
-class EarlyStopper:
-    def __init__(self, patience=1, min_delta=0):
-        self.patience = patience
-        self.min_delta = min_delta
-        self.counter = 0
-        self.min_validation_loss = float('inf')
 
-    def early_stop(self, validation_loss):
-        if validation_loss < self.min_validation_loss:
-            self.min_validation_loss = validation_loss
-            self.counter = 0
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
+class EarlyStopping:
+    def __init__(self, patience=5, verbose=False, delta=0, path='checkpoint.pt'):
+
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.inf
+        self.delta = delta
+        self.path = path
+
+    def __call__(self, val_loss, model):
+        score = -val_loss  # because we want to minimize val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+        elif score < self.best_score + self.delta:
             self.counter += 1
+            if self.verbose:
+                print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
-                return True
-        return False
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+            self.counter = 0
+
+    def save_checkpoint(self, val_loss, model):
+        '''Saves model when validation loss decreases.'''
+        if self.verbose:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}). Saving model ...')
+        torch.save(model.state_dict(), self.path)
+        self.val_loss_min = val_loss
 
 def diag_mat_weights(dimp, type = 'first'):
     if type == 'first':
@@ -469,14 +489,17 @@ if __name__ == "__main__":
 
         X_train, y_train = sim_data(ntrain, ndim, Dtype)
         X_train, y_train = X_train.to(device), y_train.to(device) 
+        X_val, y_val = sim_data(100, ndim, Dtype)
+        X_val, y_val = X_val.to(device), y_val.to(device)
         X_test, y_test = sim_data(ntest, ndim, Dtype)
         X_test, y_test = X_test.to(device), y_test.to(device) 
 
-        epstrain = torch.normal(0, torch.var(y_train)*0.01, size=y_train.size())
-        epstest = torch.normal(0, torch.var(y_test)*0.01, size=y_test.size())
+        epstrain = torch.normal(0, torch.var(y_train)*0.01, size=y_train.size()).to(device)
+        epstest = torch.normal(0, torch.var(y_test)*0.01, size=y_test.size()).to(device)
+        epsval = torch.normal(0, torch.var(y_val)*0.01, size=y_val.size()).to(device)
 
-        y_train, y_test = y_train + epstrain, y_test + epstest
-        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'TestX': X_test, 'Testy': y_test}
+        y_train, y_test, y_val = y_train + epstrain, y_test + epstest, y_val + epsval
+        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'TestX': X_test, 'Testy': y_test, 'ValX': X_val, 'Valy': y_val}
 
 
     result = {}
@@ -494,30 +517,19 @@ if __name__ == "__main__":
 
         while not conv:
             DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
-            learning_r = 1e-1
             optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
             bloss_list = []; tor = 1e-5; lr_tor = 1e-6
             patientc = 30; patientr = 10; tpat = 0; bloss = 9999
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
             for t in range(nepoch):
                 # Forward pass: Compute predicted y by passing x to the modelsp
                 pyb_af = DeepBS(X_train)
                 loss = criterion(y_train, pyb_af); bloss_list.append(loss.item())
-                
+                scheduler.step()
+
                 if (t > 0) and ((bloss_list[t-1]-bloss_list[t])<tor):        
-                    if (tpat % patientr) == 0:
-                        learning_r *= 0.2 
-                        tpat += 1
-                        #print('Learning rate reduce to ', learning_r)
-                        optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_r)
-                        if learning_r <= lr_tor:
-                            if t < patientc + 1:
-                                conv = False
-                            else:
-                                conv = True
-                            print('Convergence!')
-                            break
-                    elif tpat < patientc:
+                    if tpat < patientc:
                         tpat += 1
                         pass
                     else:
@@ -571,9 +583,11 @@ if __name__ == "__main__":
         print('Dataset '+str(d+1))
         DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
         DeepPS.load_state_dict(torch.load( './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-        optimizer = torch.optim.Adam(DeepPS.parameters(), lr= 1e-2)
+        optimizer = torch.optim.Adam(DeepPS.parameters(), lr= 1e-3)
         n = X_train.size()[0]
-        
+        best_model_path = 'Best_DPS_d'+str(d+1)+'.pt'
+        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-3, path= best_model_path)
+
         ## Access to the Weight matrix for spline
         DPS_Wstack = []
         for l in range(nl):    
@@ -592,9 +606,17 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        
 
+            early_stopping(loss, DeepPS)
+
+            if early_stopping.early_stop:
+                print("Early stopping triggered. Restoring best model...")        
+                break
+                
         with torch.no_grad():
+            DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
+            DeepPS.load_state_dict(torch.load(best_model_path, weights_only = True))
+
             PMSPE = criterion(y_test, DeepPS(X_test).detach()).item()
             Pres[d] = PMSPE
 
