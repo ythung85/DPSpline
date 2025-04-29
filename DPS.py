@@ -599,9 +599,9 @@ if __name__ == "__main__":
             Pres[d] = PMSPE
 
     result['DeepPS'] = Pres
-
-	with open('simulation_output.pkl', 'wb') as file:
-	    pickle.dump(result, file)
+	
+    with open('simulation_output.pkl', 'wb') as file:
+        pickle.dump(result, file)
 
 
     print('Result for B/P: \n')
