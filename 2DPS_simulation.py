@@ -181,7 +181,8 @@ class MPSv3(nn.Module):
         #         SPLINE 2        #
         # # # # # # # # # # # # # #
         
-        sp2out = self.sp2(ln1out)
+        sp1out = self.nm2(sp1out)
+        sp2out = self.sp2(sp1out)
         bslist2 = self.sp2.inter['basic']
         
         self.inter['ebasic2'] = bslist2
