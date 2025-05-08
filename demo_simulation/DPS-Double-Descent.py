@@ -1,6 +1,6 @@
 '''
 Command for runing this DPS.py - May 8th 
-python3 DPS.py --data A --nk 15 --nm 50 --rep 1 --nbl 2
+python3 DPS-Double-Descent.py --data A --nk 10 --nm 10 --rep 1 --nbl 1
 
 '''
 
@@ -29,10 +29,10 @@ parser.add_argument('--nl', default = 1, type= int, help = 'number of spline-lay
 parser.add_argument('--dp', default = 0.0, type = float, help = 'dropout percentage')
 
 # Training Setting
-parser.add_argument('--nepochs', default = 1000, type = int, help = 'total number of training epochs')
+parser.add_argument('--nepochs', default = 10000, type = int, help = 'total number of training epochs')
 parser.add_argument('--rep', default = 1, type = int, help = 'Number of different initialization used to train the model')
 parser.add_argument('--lr', default = 1e-1, type = float, help = 'initial learning rate')
-parser.add_argument('--fine_tune_epoch', default = 1000, type = int, help = 'total number of fine tuning epochs')
+parser.add_argument('--fine_tune_epoch', default = 10000, type = int, help = 'total number of fine tuning epochs')
 
 args = parser.parse_args()
 
@@ -259,7 +259,8 @@ class DPS(nn.Module):
         ecm_para['ebasic'] = torch.stack(list(bs_spline_value.values()), dim=0)
         ecm_para['wbasic'] = torch.stack(list(bs_spline_weight.values()), dim=0)
         ecm_para['bbasic'] = torch.stack(list(bs_spline_bias.values()), dim=0)
-        del bs_block_out, bs_spline_weight, bs_spline_value, bs_spline_bias
+        del bs_block_out, bs_spline_weight, bs_spline_value, bs_spline_bias, _
+        torch.cuda.empty_cache()
         
         return ecm_para
 
@@ -371,14 +372,16 @@ def ECM(par, initial_xi = 1, initial_sigma = 1, initial_lambda = 1e-4):
             sqr_sig += (first_sig + second_sig + third_sig + four_sig)
             
             del first_xi, second_xi, first_sig, second_sig, third_sig, four_sig
-
+            torch.cuda.empty_cache()
+            
         sqr_xi /= num_neurons
         sqr_sig /= (num_neurons*size)
 
         ls_lambda[l] = (sqr_sig/sqr_xi).item()
         
         del Cov_a, Cov_e, flatB
-    
+        torch.cuda.empty_cache()
+        
     return ls_lambda
     
 def ECM_layersise_update(model, par, Lambda, x, y):
@@ -413,7 +416,8 @@ def ECM_layersise_update(model, par, Lambda, x, y):
         getattr(block.block.BSL, 'bias').data = NB
 
         del NW, NB, B1y, BB, block
-    
+        torch.cuda.empty_cache()
+        
     with torch.no_grad():
         DPSy = model(x)
         Update_Train_Loss = np.round(criterion(y, DPSy.detach()).item(), 5)
@@ -467,180 +471,132 @@ if __name__ == "__main__":
     nk = args.nk    
     Fout = args.Fout
     nepoch = args.nepochs
+    fine_tune_epoch = args.fine_tune_epoch
     data = {}
+
+    knot_list = [10, 20, 30, 40, 50, 60, 70, 80]
+
+    # Prepare the data #
 
     for d in range(ndf):
         torch.manual_seed(d)
         X_train, y_train = sim_data(ntrain, ndim, Dtype)
         X_test, y_test = sim_data(ntest, ndim, Dtype)
+        X_val, y_val = sim_data(100, ndim, Dtype)
         epstrain = torch.normal(0, 0.1, size=y_train.size())
         epstest = torch.normal(0, 0.1, size=y_test.size())
-    
-        y_train, y_test = y_train + epstrain, y_test + epstest
-        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'TestX': X_test, 'Testy': y_test}
-    
-    
+        epsval = torch.normal(0, 0.1, size=y_val.size())
+
+        y_train, y_test = y_train + epstrain, y_test + epstest; y_val = y_val + epsval
+        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'TestX': X_test, 'Testy': y_test, 'ValX': X_val, 'Valy': y_val}
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     criterion = torch.nn.MSELoss(reduction='mean')
-    
+
+
+    Bres = np.zeros((len(knot_list)))
+    Pres = np.zeros((len(knot_list))) 
+
     result = {}
-    Lambdalist = {}
-    Bres = np.zeros((ndf, 1))
-    Pres = np.zeros((ndf, 1)) 
-    
-    for d in range(ndf):
-        print('dataset: ', str(d+1))
-        X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']
-        y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']
-    
+    for i in range(len(knot_list)):
+        '''
+        for d in range(ndf):
+            X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']; X_val = data[str(d+1)]['ValX'] 
+            y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']; y_val = data[str(d+1)]['Valy']
         
-        DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
-        optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        best_model_path = "best_DBS_model.pt"
-        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-4, path= best_model_path)
-    
-        for epoch in range(nepoch):
-            optimizer.zero_grad()
-            DeepBS.train()
-            
-            output = DeepBS(X_train)
-            loss = criterion(output, y_train)
-            val_loss = validate(DeepBS, X_train, y_train, criterion, device)
+            DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = knot_list[i], num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
+            print('Knot Number: ', knot_list[i])
+            optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+            best_model_path = "best_DBS_model_k"+str(knot_list[i])+".pt"
+            early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-4, path= best_model_path)
         
-            if epoch % 10 == 0:
-                print(f"Epoch {epoch+1:02d} | Train Loss: {loss:.4f} | " f"Val Loss: {val_loss:.4f}")
+            for epoch in range(nepoch):
+                optimizer.zero_grad()
+                DeepBS.train()
+                
+                output = DeepBS(X_train)
+                loss = criterion(output, y_train)
+                val_loss = validate(DeepBS, X_val, y_val, criterion, device)
             
-            early_stopping(val_loss, DeepBS)
-            if early_stopping.early_stop:
-                print("Early stopping triggered. Restoring best model...")        
-                break
-            loss.backward()
-            optimizer.step()
-    
-    '''
+                if epoch % 10 == 0:
+                    print(f"Epoch {epoch+1:02d} | Train Loss: {loss:.4f} | " f"Val Loss: {val_loss:.4f}")
+                
+                early_stopping(val_loss, DeepBS)
+                if early_stopping.early_stop:
+                    print("Early stopping triggered. Restoring best model...")        
+                    break
+                loss.backward()
+                optimizer.step()
+
+            del DeepBS, output, loss, val_loss
+            torch.cuda.empty_cache()
+
+        '''
+        print('Loading best DBS model for DPS training and ECM where k = ', knot_list[i])
+        model = DPS(input_dim = ndim, degree = 3, num_knots = knot_list[i], num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
+        model.load_state_dict(torch.load('./best_DBS_model_k'+str(knot_list[i])+'.pt', weights_only = True))
+        model.eval()
         with torch.no_grad():
-            print('------------------------------------------')
-            print('Before adding penalty ... ')
-            eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-            eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-            print('Training Error: ', np.round(criterion(y_train, eval_model(X_train).detach()).item(), 5), ' | Testing Error: ', np.round(criterion(y_test, eval_model(X_test).detach()).item(), 5))
-            print('------------------------------------------')
-            print('After adding penalty ... ')
-    
+            Bres[i] = criterion(model(X_test), y_test)
+            BestLambda = ECM_update(model, 20, X_train, y_train)
             
-            WB = eval_model.sp1.control_p
-            DB = diag_mat_weights(WB.size()[0], 'second').to(device)
-            BestGCV = 9999
+        del model
+        torch.cuda.empty_cache()
+
+        print('Start runing fast-tuning ...')
+
+        for d in range(ndf):
+            DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = knot_list[i], num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
+            DeepPS.load_state_dict(torch.load('./best_DBS_model_k'+str(knot_list[i])+'.pt', weights_only = True))
+            ft_learning_rate = 1e-2
+            optimizer = torch.optim.Adam(DeepPS.parameters(), lr= ft_learning_rate)
+            best_model_path = "best_DPS_model_k"+str(knot_list[i])+".pt"
+            early_stopping = EarlyStopping(patience=50, verbose=False, delta=1e-5, path= best_model_path)
+            n = X_train.size()[0]
+            BestLambda[0] = 0.6
+            for epoch in range(1, fine_tune_epoch):
+        
+                # Forward pass: Compute predicted y by passing x to the modelsp
+                output = DeepPS(X_train)
+                loss = criterion(output, y_train)
+                
+                for l in range(nl):
+                    block = getattr(DeepPS.Spline_block.model, f'block_{l}')
+                    W = getattr(block.block.BSL, 'control_p')
+                    loss += BestLambda[l]/X_train.size()[0] * torch.norm(diag_mat_weights(W.size()[0]).to(device) @ W)
+
+                val_loss = validate(DeepPS, X_val, y_val, criterion, device)
             
-            for i in range(10):
-                MPSy = eval_model(X_train)
-                LambdaB1 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 1)
-                LambdaB2 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 2)
+                if epoch % 10 == 0:
+                    print(f"Epoch {epoch+1:02d} | Train Loss: {loss:.4f} | " f"Val Loss: {val_loss:.4f}")
                 
-                B1 = eval_model.inter['ebasic']
-                B2 = eval_model.inter['ebasic2']
-                P2 = (torch.linalg.pinv(B2.T @ B2) @ B2.T @ B2)
+                early_stopping(val_loss, DeepPS)
+                if early_stopping.early_stop:
+                    print("Early stopping triggered. Restoring best model...")        
+                    break
                 
-                By1 = eval_model.inter['basic']
-                By2 = eval_model.inter['basic2']
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
                 
-                size1 = B1.size()[1]
-                size2 = B2.size()[1]
-    
-                B1 = B1.view(nm, nk, size1)
-                B2 = B2.view(nm, nk, size2)
-    
-                NW1 = torch.empty((nk, nm))
-                NW2 = torch.empty((nk, nm))
-                NB1 = torch.empty((nm))
-                NB2 = torch.empty((nm))
-                for i in range(nm):
-                    B1y = By1[:,i] - eval_model.sp1.bias.data[i]
-                    B2y = By2[:,i] - eval_model.sp2.bias.data[i]
-    
-                    BB1 = B1[i].T
-                    BB2 = B2[i].T
-                    PB1 = (torch.linalg.pinv(BB1.T @ BB1) @ BB1.T @ BB1)
-                    PB2 = (torch.linalg.pinv(BB2.T @ BB2) @ BB2.T @ BB2)
-    
-                    # Update the weights and bias
-                    NW1[:, i] = (torch.inverse(BB1.T @ BB1 + (LambdaB1/size1) * (DB.T @ DB)) @ BB1.T @ B1y)
-                    NW2[:, i] = (torch.inverse(BB2.T @ BB2 + (LambdaB2/size2) * (DB.T @ DB)) @ BB2.T @ B2y)
-                    NB1[i] = torch.mean(By1[:,i] - (NW1[:,i] @ BB1.T))
-                    NB2[i] = torch.mean(By2[:,i] - (NW2[:,i] @ BB2.T))
-                    
-                # update the weight
-                getattr(eval_model.sp1, 'control_p').data = NW1
-                getattr(eval_model.sp2, 'control_p').data = NW2
-                getattr(eval_model.sp1, 'bias').data = NB1
-                getattr(eval_model.sp2, 'bias').data = NB2
-                
-    
-                MPSy = eval_model(X_train)
-                trainloss = np.round(criterion(y_train, MPSy.detach()).item(), 5)
-                GCV = np.round((torch.norm(y_train - MPSy)/(size2-torch.trace(P2))).item(), 5)
-                
-                if GCV < BestGCV:
-                    BestLambdaB1, BestLambdaB2 = LambdaB1, LambdaB2
-                    BestGCV = GCV
-                    
-                MPSy = eval_model(X_test)
-                print('Lambda: ', np.round(LambdaB1, 5),' and ', np.round(LambdaB2, 5),'| Training Loss: ', trainloss,'| GCV: ', GCV,' | Testing Error: ', np.round(criterion(y_test, MPSy.detach()).item(), 5))
-                Lambdalist[str(d+1)] = [BestLambdaB1, BestLambdaB2]
-    
-    
+        model = DPS(input_dim = ndim, degree = 3, num_knots = knot_list[i], num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
+        model.load_state_dict(torch.load('./best_DPS_model_k'+str(knot_list[i])+'.pt', weights_only = True))
+        model.eval()
         with torch.no_grad():
-            eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-            eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-            BMSPE = criterion(y_test, eval_model(X_test).detach()).item()
-            print(BMSPE)
-            Bres[d, 0] = BMSPE
-    
-    result['MBS'] = Bres
-    
-    
-    print('Start runing fast-tuning ...')
-    
-    Fast_tun_epoch = 1001
-    for d in range(ndf):
-        print('Dataset '+str(d+1))
-        eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-        eval_model.load_state_dict(torch.load( './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-        optimizer = torch.optim.Adam(eval_model.parameters(), lr= learning_rate)
-        n = X_train.size()[0]
+            Pres[i] = criterion(model(X_test), y_test)
+            
+        del model
+        torch.cuda.empty_cache()
         
-        LambdaB1, LambdaB2 = Lambdalist[str(d+1)][0], Lambdalist[str(d+1)][1]
-        
-        for t in range(1, Fast_tun_epoch):
-                                               
-            # Forward pass: Compute predicted y by passing x to the modelsp
-            pyb_af = eval_model(X_train)
-            WB1 = eval_model.sp1.control_p.data; WB2 = eval_model.sp2.control_p.data
-            DB1 = diag_mat_weights(WB1.size()[0]).to(device); DB2 = diag_mat_weights(WB2.size()[0]).to(device)
-    
-    
-            loss = criterion(y_train, pyb_af) + (LambdaB1/n) * torch.norm(DB1 @ WB1) + (LambdaB2/n) * torch.norm(DB2 @ WB2)
-        
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        
-    
-        with torch.no_grad():
-            PMSPE = criterion(y_test, eval_model(X_test).detach()).item()
-            Pres[d, 0] = PMSPE
-    
+    result['DBS'] = Bres
     result['DPS'] = Pres
     
-    np.save('repsim.npy', result, allow_pickle = True)
     
     print('Result for B/P: \n')
-    print('Number of Dataset: ', ndf)
-    print('| MBS | Means: ', result['MBS'].mean(),' | Std: ',result['MBS'].std())
-    print('| DPS | Means: ', result['DPS'].mean(),' | Std: ',result['DPS'].std())
-    
-    '''
+    print('Knots Candidate: ', knot_list)
+    print('| MBS | Performance: ', result['DBS'])
+    print('| DPS | Performance: ', result['DPS'])
     print('End')
     
     #python3 DPS.py --data A --nk 15 --nm 50 --rep 1
