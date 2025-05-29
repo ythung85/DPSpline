@@ -74,6 +74,8 @@ The simulation for *Table 4*, *brain tumor image classification*, and *chip data
 
 ✅ Brain Tumor MRI Image classification: `./demo_simulation/Sim_Braintumor.ipynb`
 
+✅ MNIST Image classification: `./demo_simulation/Sim_MNIST.ipynb`
+
 ✅ Table 4 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
 
 ✅ Double descent: `./demo_simulation/Sim_DoubleDescent.ipynb`
