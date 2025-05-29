@@ -61,6 +61,14 @@ The above code will return the average MSPE over 10 trials and its standard devi
 | d=2  | DNN-S | 0.0056 (0.0012) | 0.0042 (0.0007) | 0.0026 (0.0005) | 0.0027 (0.0009) |
 | d=2  | DPS   | **0.0041** (0.0017) | **0.0018** (0.0004) | **0.0015** (0.0003) | **0.0011** (0.0004) |
 
+## 5 individual trials for Sparse Dataset
+The simulation for *Table 5*, we apply DPS to the sparse dataset where the input dimension is set to be 10, 30, and 50. Without the sparse assumption on DPS, the performance of DPS still outperform DNN under same architecture. To be specific, the GCV score also assist us to select the optimal architecture out of all candidates. To implement the experiment with trainsize = 1600, testsize = 200, dimension = $p$, knot number = $k$, neuron number = $m$, number of layer = $l$
+
+```
+python3 DPS.py --data A --trainsize 1600 --testsize 200 --Fin p --Fout 1 --nk k --nm m --rep 5 --nl l --lr 1e-1 --nepoch 10000 --fine_tune_epoch 1001
+```
+
+
 ## Simulation
 The simulation for *Table 4*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
 
