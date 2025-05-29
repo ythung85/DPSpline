@@ -425,15 +425,19 @@ def ECM_update(model, max_iter, x, y):
     BestGCV = prev = 9999
     patient = 10
     pcount = 0
+    
     for i in range(max_iter):
         _ = model(X_train)
         ECM_para = model.get_para_ecm(x)
         ECM_Lambda = ECM(ECM_para, initial_xi = 1, initial_sigma = 1, initial_lambda = 1e-4)
 
+        #print('Lambda: ', ECM_Lambda)
         model, GCV = ECM_layersise_update(model, ECM_para, ECM_Lambda, x, y)
-
-        if np.abs(prev - GCV) < 5e-5:
+        #print('GCV: ',GCV)
+        print(GCV)
+        if np.abs(prev - GCV) < 1e-4:
             print('GCV Converge at ',i+1,' iteration')
+            iteration = (i+1)
             break
             
         if GCV < BestGCV:
@@ -444,210 +448,271 @@ def ECM_update(model, max_iter, x, y):
             pcount += 1
 
         if pcount == patient:
-            print('GCV Converge at ',i,' iteration')
+            print('GCV Converge at ',i+1,' iteration')
+            iteration = (i+1)
             break
 
         prev = GCV
+        iteration = (i+1)
+        
+        del ECM_para, ECM_Lambda, _
+        torch.cuda.empty_cache()
+        
+    return BestLambda, iteration
 
-        del ECM_para, ECM_Lambda
-    
-    return BestLambda
+class FlexibleMLP(nn.Module):
+    def __init__(self, input_size, hidden_sizes, output_size):
+        super().__init__()
+        self.hidden_layers = nn.ModuleList()
+        prev_size = input_size
+        
+        # Dynamically create hidden layers
+        for h_size in hidden_sizes:
+            self.hidden_layers.append(nn.Linear(prev_size, h_size))
+            prev_size = h_size
+            
+        self.output = nn.Linear(prev_size, output_size)
 
+    def forward(self, x):
+        for layer in self.hidden_layers:
+            x = torch.relu(layer(x))
+        return self.output(x)
 
 if __name__ == "__main__":
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    criterion = torch.nn.MSELoss(reduction='mean') 
     ntrain = args.trainsize
     ntest = args.testsize
     Dtype = args.data
     ndim = args.Fin
     learning_rate = args.lr
-    ndf = args.rep
-    nl = args.nbl
-    nm = args.nm
-    nk = args.nk    
-    Fout = args.Fout
     nepoch = args.nepochs
+    fine_tune_epoch = args.fine_tune_epoch
+
+    ndf = args.rep
+    nm = args.nm
+    nk = args.nk 
+    nl = args.nl   
+    Fout = args.Fout
+    dp = args.dp
     data = {}
 
     for d in range(ndf):
         torch.manual_seed(d)
+
         X_train, y_train = sim_data(ntrain, ndim, Dtype)
+        X_train, y_train = X_train.to(device), y_train.to(device) 
+        X_val, y_val = sim_data(ntrain, ndim, Dtype)
+        X_val, y_val = X_val.to(device), y_val.to(device) 
         X_test, y_test = sim_data(ntest, ndim, Dtype)
-        epstrain = torch.normal(0, 0.1, size=y_train.size())
-        epstest = torch.normal(0, 0.1, size=y_test.size())
+        X_test, y_test = X_test.to(device), y_test.to(device) 
+
+        epstrain = torch.normal(0, torch.var(y_train)*0.01, size=y_train.size()).to(device)
+        epstest = torch.normal(0, torch.var(y_test)*0.01, size=y_test.size()).to(device)
+        epsval = torch.normal(0, torch.var(y_val)*0.01, size=y_val.size()).to(device) 
+
+        y_train, y_val, y_test = y_train + epstrain, y_val + epsval, y_test + epstest
+        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'ValX': X_val, 'Valy': y_val, 'TestX': X_test, 'Testy': y_test}
     
-        y_train, y_test = y_train + epstrain, y_test + epstest
-        data[str(d+1)] = {'TrainX': X_train, 'Trainy': y_train, 'TestX': X_test, 'Testy': y_test}
-    
-    
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    criterion = torch.nn.MSELoss(reduction='mean')
-    
+
     result = {}
     Lambdalist = {}
-    Bres = np.zeros((ndf, 1))
-    Pres = np.zeros((ndf, 1)) 
+    Bres = np.zeros((ndf))
+    Pres = np.zeros((ndf))
+    Dres = np.zeros((ndf))
+    Iterlist = np.zeros((ndf))
     
     for d in range(ndf):
         print('dataset: ', str(d+1))
-        X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']
-        y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']
-    
+        X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']; X_val = data[str(d+1)]['ValX']
+        y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']; y_val = data[str(d+1)]['Valy']
+
+        best_model_path = "./best_DBS_model_d" + str(d+1)+ ".pt"
+        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-3, path= best_model_path)
         
         DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = 0.0, output_dim = Fout, bias = True).to(device)
         optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        best_model_path = "best_DBS_model.pt"
-        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-4, path= best_model_path)
-    
+        
         for epoch in range(nepoch):
             optimizer.zero_grad()
             DeepBS.train()
-            
+
+            # Forward pass: Compute predicted y by passing x to the modelsp
+            '''
+            train_loss = train_one_epoch(DeepBS, X_train, y_train, criterion, optimizer, device)
+            val_loss = validate(DeepBS, X_train, y_train, criterion, device)
+
+            print(f"Epoch {epoch+1:02d} | Train Loss: {train_loss:.4f} | " f"Val Loss: {val_loss:.4f}")
+            scheduler.step()
+            early_stopping(val_loss, DeepBS)
+
+            if early_stopping.early_stop:
+                print("Early stopping triggered. Restoring best model...")        
+                break
+
+            '''
+
             output = DeepBS(X_train)
             loss = criterion(output, y_train)
-            val_loss = validate(DeepBS, X_train, y_train, criterion, device)
-        
+            val_loss = validate(DeepBS, X_val, y_val, criterion, device)
+
             if epoch % 10 == 0:
                 print(f"Epoch {epoch+1:02d} | Train Loss: {loss:.4f} | " f"Val Loss: {val_loss:.4f}")
-            
+
             early_stopping(val_loss, DeepBS)
             if early_stopping.early_stop:
                 print("Early stopping triggered. Restoring best model...")        
                 break
             loss.backward()
             optimizer.step()
-    
-    '''
-        with torch.no_grad():
-            print('------------------------------------------')
-            print('Before adding penalty ... ')
-            eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-            eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-            print('Training Error: ', np.round(criterion(y_train, eval_model(X_train).detach()).item(), 5), ' | Testing Error: ', np.round(criterion(y_test, eval_model(X_test).detach()).item(), 5))
-            print('------------------------------------------')
-            print('After adding penalty ... ')
-    
             
-            WB = eval_model.sp1.control_p
-            DB = diag_mat_weights(WB.size()[0], 'second').to(device)
-            BestGCV = 9999
-            
-            for i in range(10):
-                MPSy = eval_model(X_train)
-                LambdaB1 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 1)
-                LambdaB2 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 2)
-                
-                B1 = eval_model.inter['ebasic']
-                B2 = eval_model.inter['ebasic2']
-                P2 = (torch.linalg.pinv(B2.T @ B2) @ B2.T @ B2)
-                
-                By1 = eval_model.inter['basic']
-                By2 = eval_model.inter['basic2']
-                
-                size1 = B1.size()[1]
-                size2 = B2.size()[1]
-    
-                B1 = B1.view(nm, nk, size1)
-                B2 = B2.view(nm, nk, size2)
-    
-                NW1 = torch.empty((nk, nm))
-                NW2 = torch.empty((nk, nm))
-                NB1 = torch.empty((nm))
-                NB2 = torch.empty((nm))
-                for i in range(nm):
-                    B1y = By1[:,i] - eval_model.sp1.bias.data[i]
-                    B2y = By2[:,i] - eval_model.sp2.bias.data[i]
-    
-                    BB1 = B1[i].T
-                    BB2 = B2[i].T
-                    PB1 = (torch.linalg.pinv(BB1.T @ BB1) @ BB1.T @ BB1)
-                    PB2 = (torch.linalg.pinv(BB2.T @ BB2) @ BB2.T @ BB2)
-    
-                    # Update the weights and bias
-                    NW1[:, i] = (torch.inverse(BB1.T @ BB1 + (LambdaB1/size1) * (DB.T @ DB)) @ BB1.T @ B1y)
-                    NW2[:, i] = (torch.inverse(BB2.T @ BB2 + (LambdaB2/size2) * (DB.T @ DB)) @ BB2.T @ B2y)
-                    NB1[i] = torch.mean(By1[:,i] - (NW1[:,i] @ BB1.T))
-                    NB2[i] = torch.mean(By2[:,i] - (NW2[:,i] @ BB2.T))
-                    
-                # update the weight
-                getattr(eval_model.sp1, 'control_p').data = NW1
-                getattr(eval_model.sp2, 'control_p').data = NW2
-                getattr(eval_model.sp1, 'bias').data = NB1
-                getattr(eval_model.sp2, 'bias').data = NB2
-                
-    
-                MPSy = eval_model(X_train)
-                trainloss = np.round(criterion(y_train, MPSy.detach()).item(), 5)
-                GCV = np.round((torch.norm(y_train - MPSy)/(size2-torch.trace(P2))).item(), 5)
-                
-                if GCV < BestGCV:
-                    BestLambdaB1, BestLambdaB2 = LambdaB1, LambdaB2
-                    BestGCV = GCV
-                    
-                MPSy = eval_model(X_test)
-                print('Lambda: ', np.round(LambdaB1, 5),' and ', np.round(LambdaB2, 5),'| Training Loss: ', trainloss,'| GCV: ', GCV,' | Testing Error: ', np.round(criterion(y_test, MPSy.detach()).item(), 5))
-                Lambdalist[str(d+1)] = [BestLambdaB1, BestLambdaB2]
-    
-    
+        del DeepBS, output, loss, val_loss
+        del X_val, y_val    
+        
+        ## ECM -> Find optimal Lambda
         with torch.no_grad():
-            eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-            eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-            BMSPE = criterion(y_test, eval_model(X_test).detach()).item()
-            print(BMSPE)
-            Bres[d, 0] = BMSPE
+            model = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
+            model.load_state_dict(torch.load("./best_DBS_model_d" + str(d+1)+ ".pt", weights_only = True))
+            BMSPE = criterion(y_test, model(X_test).detach()).item()
+            Bres[d] = BMSPE
+            BestLambda, Iter = ECM_update(model, 10, X_train, y_train)
+            Iterlist[d] = Iter
+            Lambdalist[str(d+1)] = BestLambda
+            
+            del model, X_train, y_train, X_test, y_test       
+        torch.cuda.empty_cache()
+        
+    result['Iteration'] = Iterlist
+    result['DeepBS'] = Bres
+
     
-    result['MBS'] = Bres
-    
-    
+    ## DPS fine-tuning
     print('Start runing fast-tuning ...')
-    
-    Fast_tun_epoch = 1001
+
     for d in range(ndf):
         print('Dataset '+str(d+1))
-        eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-        eval_model.load_state_dict(torch.load( './EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-        optimizer = torch.optim.Adam(eval_model.parameters(), lr= learning_rate)
+        X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']; X_val = data[str(d+1)]['ValX']
+        y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']; y_val = data[str(d+1)]['Valy']
+
+       
+        DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
+        DeepPS.load_state_dict(torch.load("./best_DBS_model_d" + str(d+1)+ ".pt", weights_only = True))
+        learning_rate = 1e-2
+        optimizer = torch.optim.Adam(DeepPS.parameters(), lr= learning_rate)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         n = X_train.size()[0]
+        best_model_path = "./best_DPS_model_d" + str(d+1)+ ".pt"
+        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-5, path= best_model_path)
         
-        LambdaB1, LambdaB2 = Lambdalist[str(d+1)][0], Lambdalist[str(d+1)][1]
         
-        for t in range(1, Fast_tun_epoch):
-                                               
-            # Forward pass: Compute predicted y by passing x to the modelsp
-            pyb_af = eval_model(X_train)
-            WB1 = eval_model.sp1.control_p.data; WB2 = eval_model.sp2.control_p.data
-            DB1 = diag_mat_weights(WB1.size()[0]).to(device); DB2 = diag_mat_weights(WB2.size()[0]).to(device)
-    
-    
-            loss = criterion(y_train, pyb_af) + (LambdaB1/n) * torch.norm(DB1 @ WB1) + (LambdaB2/n) * torch.norm(DB2 @ WB2)
-        
+        for epoch in range(1, fine_tune_epoch):
             optimizer.zero_grad()
+
+            # Forward pass: Compute predicted y by passing x to the modelsp
+            output = DeepPS(X_train)
+            loss = criterion(output, y_train)
+
+            for l in range(nl):
+                block = getattr(DeepPS.Spline_block.model, f'block_{l}')
+                W = getattr(block.block.BSL, 'control_p')
+                loss += BestLambda[l]/X_train.size()[0] * torch.norm(diag_mat_weights(W.size()[0]).to(device) @ W)
+
+            val_loss = validate(DeepPS, X_val, y_val, criterion, device)
+
+            if epoch % 10 == 0:
+                print(f"Epoch {epoch+1:02d} | Train Loss: {loss:.4f} | " f"Val Loss: {val_loss:.4f}")
+
+            
+            early_stopping(val_loss, DeepPS)
+            if early_stopping.early_stop:
+                print("Early stopping triggered. Restoring best model...")        
+                break
+                
             loss.backward()
             optimizer.step()
+            scheduler.step()
+            
+        del DeepPS, output, loss, val_loss, early_stopping
+        del X_train, X_val, y_train, y_val
         
-    
+
         with torch.no_grad():
-            PMSPE = criterion(y_test, eval_model(X_test).detach()).item()
-            Pres[d, 0] = PMSPE
+            model = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, num_bsl = nl, dropout = dp, output_dim = Fout, bias = True).to(device)
+            model.load_state_dict(torch.load("./best_DPS_model_d" + str(d+1)+ ".pt", weights_only = True))
+            model.eval()
+            PMSPE = criterion(y_test, model(X_test).detach()).item()
+            Pres[d] = PMSPE
+        
+            del model, PMSPE, X_test, y_test
+    result['DeepPS'] = Pres
+
     
-    result['DPS'] = Pres
+    ### DNN ### 
     
-    np.save('repsim.npy', result, allow_pickle = True)
+    print('DNN...')
+
+    def train_one_epoch(model, x, y, criterion, optimizer, device, grad = True):
+        x, y = x.to(device), y.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(x)
+        loss = criterion(outputs, y)
+        if grad:
+            loss.backward()
+            optimizer.step()
+
+        return loss
+
+    for d in range(ndf):
+        print('dataset: ', str(d+1))
+        X_train = data[str(d+1)]['TrainX']; X_test = data[str(d+1)]['TestX']
+        y_train = data[str(d+1)]['Trainy']; y_test = data[str(d+1)]['Testy']
+
+        nneuron = nm
+        model = FlexibleMLP(input_size=ndim, hidden_sizes=[nneuron, nneuron, nneuron, nneuron], output_size=1).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        criterion = torch.nn.MSELoss(reduction='mean')
+        best_model_path = "best_DNN_model.pt"
+        early_stopping = EarlyStopping(patience=10, verbose=False, delta=1e-3, path= best_model_path)
+
+        for epoch in range(nepoch):
+            train_loss = train_one_epoch(model, X_train, y_train, criterion, optimizer, device)
+            #val_loss = validate(model, X_val, y_val, criterion, device)
+            if epoch % 10 == 0:
+                print(f"Epoch {epoch+1:02d} | Train Loss: {train_loss:.4f}")
+                
+            scheduler.step()
+            early_stopping(train_loss, model)
+
+            if early_stopping.early_stop:
+                print("Early stopping triggered. Restoring best model...")        
+                break
+
+
+        DNN = FlexibleMLP(input_size=ndim, hidden_sizes=[nneuron, nneuron, nneuron, nneuron], output_size=1).to(device)
+        DNN.load_state_dict(torch.load('./best_DNN_model.pt', weights_only = True))
+        DNN.eval()
+        with torch.no_grad():
+            DMSPE = criterion(y_test, DNN(X_test).detach()).item()
+            Dres[d] = DMSPE
+    result['DNN'] = Dres
     
+    
+    file_name = 'dim' + str(ndim) + '_simulation_output.pkl'
+
+    with open(file_name, 'wb') as file:
+        pickle.dump(result, file)
+    
+    print(result)
     print('Result for B/P: \n')
     print('Number of Dataset: ', ndf)
-    print('| MBS | Means: ', result['MBS'].mean(),' | Std: ',result['MBS'].std())
-    print('| DPS | Means: ', result['DPS'].mean(),' | Std: ',result['DPS'].std())
+    print('| DeepBS | Means: ', result['DeepBS'].mean(),' | Std: ',result['DeepBS'].std())
+    print('| DeepPS | Means: ', result['DeepPS'].mean(),' | Std: ',result['DeepPS'].std())
+    print('| DNN | Means: ', result['DNN'].mean(),' | Std: ',result['DNN'].std())
+    print('Iteration_list: ', result['Iteration'])
     
-    '''
-    print('End')
-    
-    #python3 DPS.py --data A --nk 15 --nm 50 --rep 1
-
-
-
-
+    print('Iteration_list: ', result['Iteration'])
 
 
 
