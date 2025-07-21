@@ -40,12 +40,13 @@ python3 DPS.py --data A --nk 15 --nm 100 --rep 1 --nbl 1 --trainsize 400
 
 Afterwards, we will calculate the MSPE and its standard deviation over 100 trials with respect to different training size, and the result is summarized below.
 
-Trainsize\ Method | DNN-S | DPS | 2DNN-S | 2DPS | 
+Trainsize\ Method | DS | DPS | 2DS | 2DPS | 
 :---: | --- | --- | --- |--- 
 200 | 0.086 (0.147) | **0.048 (0.024)** | 0.088 (0.081) | 0.051 (0.031) |
 400 | 0.061 (0.116) | 0.031 (0.013) | 0.078 (0.217) | **0.028 (0.008)** |
 800 | 0.074 (0.141) | 0.034 (0.017) | 0.044 (0.076) | **0.024 (0.008)** | 
 
+Note: DS(DPS) and 2DS(2DPS) represent one and two layer P-Spline without (with) penalty term respectively.
 
 ## 10 individual trials for Table 5
 As for Table 4, we consider following equation:
