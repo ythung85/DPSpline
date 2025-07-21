@@ -33,6 +33,11 @@ For 2 Layer DPS:
 python3 2DPS_simulation.py --data A --trainsize 800 --testsize 200 --Fin 2 --Fout 1 --nk 15 --nm 50 --rep 100
 ```
 
+(Update) For more flexible setting, we can assign specific number of DPS layer by executing following code:
+```
+python3 DPS.py --data A --nk 15 --nm 100 --rep 1 --nbl 1 --trainsize 400
+```
+
 Afterwards, we will calculate the MSPE and its standard deviation over 100 trials with respect to different training size, and the result is summarized below.
 
 Trainsize\ Method | DNN-S | DPS | 2DNN-S | 2DPS | 
@@ -43,7 +48,7 @@ Trainsize\ Method | DNN-S | DPS | 2DNN-S | 2DPS |
 
 
 ## 10 individual trials for Table 5
-As for Table 5, we consider following equation:
+As for Table 4, we consider following equation:
 ```math
 g^*_1({x})= \left[\prod^p_{i=1}\frac{|4x_i-2|+a_i}{1+a_i}\right],\text{ where }a_i=i/2,i=1,\cdots,p
 ```
@@ -58,7 +63,7 @@ The above code will return the average MSPE over 10 trials and its standard devi
 
 | Dim  | Model | n = 200  | n = 400 | n = 800  | n = 1500 |
 | :-----:| :------: |:-----:| :-----:| :-----:| :-----:|
-| d=2  | DNN-S | 0.0056 (0.0012) | 0.0042 (0.0007) | 0.0026 (0.0005) | 0.0027 (0.0009) |
+| d=2  | DS | 0.0056 (0.0012) | 0.0042 (0.0007) | 0.0026 (0.0005) | 0.0027 (0.0009) |
 | d=2  | DPS   | **0.0041** (0.0017) | **0.0018** (0.0004) | **0.0015** (0.0003) | **0.0011** (0.0004) |
 
 ## 5 Individual Trials for Sparse Dataset
@@ -70,13 +75,13 @@ python3 DPS.py --data A --trainsize 1600 --testsize 200 --Fin p --Fout 1 --nk k 
 
 
 ## Simulation
-The simulation for *Table 4*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
+The simulation for *Table 6 and 7*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
 
 ✅ Brain Tumor MRI Image classification: `./demo_simulation/Sim_Braintumor.ipynb`
 
 ✅ MNIST Image classification: `./demo_simulation/Sim_MNIST.ipynb`
 
-✅ Table 4 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
+✅ Table 3 demo: `./demo_simulation/Sim_ModelSelection.ipynb`
 
 ✅ Double descent: `./demo_simulation/Sim_DoubleDescent.ipynb`
 
