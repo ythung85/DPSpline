@@ -12,7 +12,7 @@ CCCtrain<-CandPoints(N=5000,p_cont=9)
 CCCtest<-CandPoints(N=250,p_cont=9)
 
 # validation on testing data and select the parameter with highest eta value.
-
+setwd('/Users/a080528/Desktop/Github/DPSpline/demo_simulation/')
 write.csv(CCCtrain,"./dataset/trainsample.csv", row.names = FALSE)
 write.csv(CCCtest,"./dataset/testsample.csv", row.names = FALSE)
 
