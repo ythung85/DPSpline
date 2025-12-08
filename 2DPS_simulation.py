@@ -351,74 +351,74 @@ if __name__ == "__main__":
 				break
 		
 		with torch.no_grad():
-		    print('------------------------------------------')
-		    print('Before adding penalty ... ')
-		    eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
-		    eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
-		    print('Training Error: ', np.round(criterion(y_train, eval_model(X_train).detach()).item(), 5), ' | Testing Error: ', np.round(criterion(y_test, eval_model(X_test).detach()).item(), 5))
-		    print('------------------------------------------')
-		    print('After adding penalty ... ')
+			print('------------------------------------------')
+			print('Before adding penalty ... ')
+			eval_model = MPSv3(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = nm, output_dim = Fout, bias = True).to(device)
+			eval_model.load_state_dict(torch.load('./EXA'+str(X_train.size()[0])+'h'+str(nm)+'k'+str(nk)+'data'+str(d+1), weights_only = True))
+			print('Training Error: ', np.round(criterion(y_train, eval_model(X_train).detach()).item(), 5), ' | Testing Error: ', np.round(criterion(y_test, eval_model(X_test).detach()).item(), 5))
+			print('------------------------------------------')
+			print('After adding penalty ... ')
 
-		    
-		    WB = eval_model.sp1.control_p
-		    DB = diag_mat_weights(WB.size()[0], 'second').to(device)
-		    BestGCV = 9999
-		    
-		    for i in range(10):
-		        MPSy = eval_model(X_train)
-		        LambdaB1 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 1)
-		        LambdaB2 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 2)
-		        
-		        B1 = eval_model.inter['ebasic']
-		        B2 = eval_model.inter['ebasic2']
-		        P2 = (torch.linalg.pinv(B2.T @ B2) @ B2.T @ B2)
-		        
-		        By1 = eval_model.inter['basic']
-		        By2 = eval_model.inter['basic2']
-		        
-		        size1 = B1.size()[1]
-		        size2 = B2.size()[1]
+			
+			WB = eval_model.sp1.control_p
+			DB = diag_mat_weights(WB.size()[0], 'second').to(device)
+			BestGCV = 9999
+			
+			for i in range(10):
+				MPSy = eval_model(X_train)
+				LambdaB1 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 1)
+				LambdaB2 = ECM(model = eval_model, num_neurons = nm, num_knots = nk, L = 2)
+				
+				B1 = eval_model.inter['ebasic']
+				B2 = eval_model.inter['ebasic2']
+				P2 = (torch.linalg.pinv(B2.T @ B2) @ B2.T @ B2)
+				
+				By1 = eval_model.inter['basic']
+				By2 = eval_model.inter['basic2']
+				
+				size1 = B1.size()[1]
+				size2 = B2.size()[1]
 
-		        B1 = B1.view(nm, nk, size1)
-		        B2 = B2.view(nm, nk, size2)
+				B1 = B1.view(nm, nk, size1)
+				B2 = B2.view(nm, nk, size2)
 
-		        NW1 = torch.empty((nk, nm))
-		        NW2 = torch.empty((nk, nm))
-		        NB1 = torch.empty((nm))
-		        NB2 = torch.empty((nm))
-		        for i in range(nm):
-		            B1y = By1[:,i] - eval_model.sp1.bias.data[i]
-		            B2y = By2[:,i] - eval_model.sp2.bias.data[i]
+				NW1 = torch.empty((nk, nm))
+				NW2 = torch.empty((nk, nm))
+				NB1 = torch.empty((nm))
+				NB2 = torch.empty((nm))
+				for i in range(nm):
+					B1y = By1[:,i] - eval_model.sp1.bias.data[i]
+					B2y = By2[:,i] - eval_model.sp2.bias.data[i]
 
-		            BB1 = B1[i].T
-		            BB2 = B2[i].T
-		            PB1 = (torch.linalg.pinv(BB1.T @ BB1) @ BB1.T @ BB1)
-		            PB2 = (torch.linalg.pinv(BB2.T @ BB2) @ BB2.T @ BB2)
+					BB1 = B1[i].T
+					BB2 = B2[i].T
+					PB1 = (torch.linalg.pinv(BB1.T @ BB1) @ BB1.T @ BB1)
+					PB2 = (torch.linalg.pinv(BB2.T @ BB2) @ BB2.T @ BB2)
 
-		            # Update the weights and bias
-		            NW1[:, i] = (torch.inverse(BB1.T @ BB1 + (LambdaB1/size1) * (DB.T @ DB)) @ BB1.T @ B1y)
-		            NW2[:, i] = (torch.inverse(BB2.T @ BB2 + (LambdaB2/size2) * (DB.T @ DB)) @ BB2.T @ B2y)
-		            NB1[i] = torch.mean(By1[:,i] - (NW1[:,i] @ BB1.T))
-		            NB2[i] = torch.mean(By2[:,i] - (NW2[:,i] @ BB2.T))
-		            
-		        # update the weight
-		        getattr(eval_model.sp1, 'control_p').data = NW1
-		        getattr(eval_model.sp2, 'control_p').data = NW2
-		        getattr(eval_model.sp1, 'bias').data = NB1
-		        getattr(eval_model.sp2, 'bias').data = NB2
-		        
+					# Update the weights and bias
+					NW1[:, i] = (torch.inverse(BB1.T @ BB1 + (LambdaB1/size1) * (DB.T @ DB)) @ BB1.T @ B1y)
+					NW2[:, i] = (torch.inverse(BB2.T @ BB2 + (LambdaB2/size2) * (DB.T @ DB)) @ BB2.T @ B2y)
+					NB1[i] = torch.mean(By1[:,i] - (NW1[:,i] @ BB1.T))
+					NB2[i] = torch.mean(By2[:,i] - (NW2[:,i] @ BB2.T))
+					
+				# update the weight
+				getattr(eval_model.sp1, 'control_p').data = NW1
+				getattr(eval_model.sp2, 'control_p').data = NW2
+				getattr(eval_model.sp1, 'bias').data = NB1
+				getattr(eval_model.sp2, 'bias').data = NB2
+				
 
-		        MPSy = eval_model(X_train)
-		        trainloss = np.round(criterion(y_train, MPSy.detach()).item(), 5)
-		        GCV = np.round((torch.norm(y_train - MPSy)/(size2-torch.trace(P2))).item(), 5)
-		        
-		        if GCV < BestGCV:
-		            BestLambdaB1, BestLambdaB2 = LambdaB1, LambdaB2
-		            BestGCV = GCV
-		            
-		        MPSy = eval_model(X_test)
-		        print('Lambda: ', np.round(LambdaB1, 5),' and ', np.round(LambdaB2, 5),'| Training Loss: ', trainloss,'| GCV: ', GCV,' | Testing Error: ', np.round(criterion(y_test, MPSy.detach()).item(), 5))
-		        Lambdalist[str(d+1)] = [BestLambdaB1, BestLambdaB2]
+				MPSy = eval_model(X_train)
+				trainloss = np.round(criterion(y_train, MPSy.detach()).item(), 5)
+				GCV = np.round((torch.norm(y_train - MPSy)/(size2-torch.trace(P2))).item(), 5)
+				
+				if GCV < BestGCV:
+					BestLambdaB1, BestLambdaB2 = LambdaB1, LambdaB2
+					BestGCV = GCV
+					
+				MPSy = eval_model(X_test)
+				print('Lambda: ', np.round(LambdaB1, 5),' and ', np.round(LambdaB2, 5),'| Training Loss: ', trainloss,'| GCV: ', GCV,' | Testing Error: ', np.round(criterion(y_test, MPSy.detach()).item(), 5))
+				Lambdalist[str(d+1)] = [BestLambdaB1, BestLambdaB2]
 
 
 		with torch.no_grad():
