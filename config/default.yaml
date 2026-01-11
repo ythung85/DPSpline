@@ -1,0 +1,21 @@
+
+---
+
+## `configs/default.yaml`
+
+```yaml
+trainsize: 400
+testsize: 400
+data: A
+Fin: 2
+Fout: 1
+nk: 15
+nbl: 1
+nm: 50
+nl: 1
+dp: 0.0
+nepochs: 1000
+rep: 1
+lr: 0.1
+fine_tune_epoch: 1000
+device: auto

@@ -1,6 +1,5 @@
-matplotlib == 3.8.3
-numpy == 1.26.4
-scikit-learn == 1.4.1
-scipy == 1.12.0
-torch == 2.4.0
-tqdm == 4.66.2
+torch>=1.11
+scikit-learn
+numpy
+pyyaml
+scipy   # 若你要用 SciPy B-splines

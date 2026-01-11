@@ -602,7 +602,7 @@ if __name__ == "__main__":
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         n = X_train.size()[0]
         best_model_path = "./best_DPS_model_d" + str(d+1)+ ".pt"
-        early_stopping = EarlyStopping(patience=30, verbose=False, delta=1e-5, path= best_model_path)
+        early_stopping = EarlyStopping(patience=50, verbose=False, delta=1e-5, path= best_model_path)
         
         
         for epoch in range(1, fine_tune_epoch):

@@ -1,7 +1,7 @@
 # DPS - Pytorch Implementation 
 This is a PyTorch implementation of ["Deep P-Spline: Fast tuning and Theory"](https://arxiv.org/abs/2501.01376) , where we propose the novel structure as follow compared to traditional Deep Neuron Networks (DNNs).
 
-![](./imgs/DPS.png)
+![](./src/imgs/DPS.png)
 # Quick Start
 ## Dependency
 You can install the Python dependencies with
@@ -33,9 +33,9 @@ For 2 Layer DPS:
 python3 2DPS_simulation.py --data A --trainsize 800 --testsize 200 --Fin 2 --Fout 1 --nk 15 --nm 50 --rep 100
 ```
 
-(Update) For more flexible setting, we can assign specific number of DPS layer by executing following code:
+*(Update) For more flexible setting, we can assign specific number of DPS layer "l" by executing following code:*
 ```
-python3 DPS.py --data A --nk 15 --nm 100 --rep 1 --nbl 1 --trainsize 400
+python3 main.py --data A --nk 15 --nm 50 --rep 1 --nbl l --trainsize 400
 ```
 
 Afterwards, we will calculate the MSPE and its standard deviation over 100 trials with respect to different training size, and the result is summarized below.
@@ -88,6 +88,11 @@ The simulation for *Table 6 and 7*, *brain tumor image classification*, and *chi
 
 ✅ Surrogate model for Chip data: `./demo_simulation/Sim_Chip.ipynb`
 
+*(Update) In Appendix G-4 and Appendix H, we add the additional experiment for larger dataset such as California Housing, Bikeshares, and YearPredictionMSD and how GCV provides the insight of model selection.*
+
+✅ Brain Tumor MRI Image classification: `./src/experiments/Real-Data-Analysis.ipynb`
+✅ Brain Tumor MRI Image classification: `./src/experiments/Simulation-AppendixH.ipynb`
+
 ### Chip Data
 For building the surrogate model for chip data, we utilize python and R for convenience. Following the steps below, you can replicate the experiment in Section 6.2 for building the survival function $S(t)$ for chip data.
 
@@ -96,5 +101,9 @@ For building the surrogate model for chip data, we utilize python and R for conv
 - Besides the prediction from DPS, we extract the value of last hidden layer in DPS and feed it to Gaussian process in `MaxPro_Sampling.R`.
 - According to the property of Gaussian process, we can construct the survival function and its confidence interval over its lifespan.
 
-![|100](./imgs/PIplot2.png)
+![|100](./src/imgs/PIplot2.png)
 
+### Appendix H (Model Selection)
+We implement how GCV assists on model selection. The example is demonstrated on example 4.1 in the paper where training size $n=200$. We consider the three-layer DPS where for each layer the neuron number candidate $\in\{10, 15, 20\}$ with $3^3$ combinations. In the following figure, we fixed the neuron number for first layer and the red square points out the best architecture. The optimal model configuration for this example is $\{10, 10, 20\}$.
+
+![|100](./src/imgs/GCV_selection.png)
