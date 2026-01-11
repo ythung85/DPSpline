@@ -24,9 +24,9 @@ module load pytorch
 
 
 PARAM_LIST=(
-  "--hc 512 256 128 64 --nk 15 --fine_tune_lr 1e-6 --hp A --dropout 0.2 --case year"
-  "--hc 256 128 64 32 --nk 15 --fine_tune_lr 1e-6 --hp B --dropout 0.2 --case year"
-  "--hc 128 64 32 16 --nk 15 --fine_tune_lr 1e-6 --hp C --dropout 0.2 --case year"
+  "--hc 256 128 64 --nk 15 --fine_tune_lr 1e-5 --dropout 0.2 --case ca"
+  "--hc 128 64 32 --nk 15 --fine_tune_lr 1e-6  --dropout 0.2 --case bike"
+  "--hc 128 64 32 --nk 10 --fine_tune_lr 1e-5 --dropout 0.2 --case churn"
 )
 
 

@@ -25,10 +25,10 @@ parser.add_argument('--Fout', type = int, default=1)
 ## DBS Model Setting
 parser.add_argument('--nk', type = int, default=15)
 parser.add_argument('--knot_place', type = str, default='quantile')
-parser.add_argument('--hc', nargs ="*", default=[30, 30], help='hidden configuration for DPS')
+parser.add_argument('--hc', nargs ="*", default=[30, 30], type=int, help='hidden configuration for DPS')
 parser.add_argument('--nl', type = int, default=2)
 parser.add_argument('--nepochs', type = int, default=10000)
-parser.add_argument('--lr', type = float, default=1e-1)
+parser.add_argument('--lr', type = float, default=1e-2)
 
 ## ECM setting
 parser.add_argument('--ECM_Iter', type = int, default=20)
@@ -97,9 +97,9 @@ if __name__ == "__main__":
 
         train_loader, val_loader = create_loaders(X_train, y_train, X_val, y_val)
 
+        print(hidden_config)
         DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = hidden_config, num_bsl = nbl, dropout = 0.0, output_dim = Fout, knots_place = kp, bias = True).to(device)
         optimizer = torch.optim.Adam(DeepBS.parameters(), lr=learning_rate)
-
         save_path_bs = f"best_DBS_model_d{d+1}.pt"
         early_stop = EarlyStopping(patience=50, verbose=False, delta=1e-3, path=save_path_bs)
 
@@ -111,19 +111,19 @@ if __name__ == "__main__":
 
         # Load best model for ECM
         with torch.no_grad():
-        	DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = hidden_config, num_bsl = nbl, dropout = 0.0, output_dim = Fout, knots_place = kp, bias = True).to(device)
-        	DeepBS.load_state_dict(torch.load(save_path_bs, weights_only=True))
-        	DeepBS.eval()
+            DeepBS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = hidden_config, num_bsl = nbl, dropout = 0.0, output_dim = Fout, knots_place = kp, bias = True).to(device)
+            DeepBS.load_state_dict(torch.load(save_path_bs, weights_only=True))
+            DeepBS.eval()
 
 
-        	score_bs = criterion(y_test, DeepBS(X_test)).item()
-        	Bres[d] = score_bs
+            score_bs = criterion(y_test, DeepBS(X_test)).item()
+            Bres[d] = score_bs
 
-        	Info_ECM, iteration = ECM_update(DeepBS, args.ECM_Iter, X_train, y_train)
+            Info_ECM, iteration = ECM_update(DeepBS, args.ECM_Iter, X_train, y_train)
 
-        	Lambdalist[str(d+1)] = Info_ECM['Best_Lambda']
+            Lambdalist[str(d+1)] = Info_ECM['Best_Lambda']
 
-        	del DeepBS     
+            del DeepBS     
         torch.cuda.empty_cache()
 
         
@@ -148,23 +148,20 @@ if __name__ == "__main__":
         	lambda_vals = Lambdalist[str(d+1)])
 
         with torch.no_grad():
-        	DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = hidden_config, num_bsl = nbl, dropout = 0.0, output_dim = Fout, knots_place = kp, bias = True).to(device)
-        	DeepPS.load_state_dict(torch.load(save_path_ps, weights_only=True))
-        	DeepPS.eval()
+            DeepPS = DPS(input_dim = ndim, degree = 3, num_knots = nk, num_neurons = hidden_config, num_bsl = nbl, dropout = 0.0, output_dim = Fout, knots_place = kp, bias = True).to(device)
+            DeepPS.load_state_dict(torch.load(save_path_ps, weights_only=True))
+            DeepPS.eval()
 
-        	score_ps = criterion(y_test, DeepPS(X_test)).item()
-        	Pres[d] = score_ps
+            score_ps = criterion(y_test, DeepPS(X_test)).item()
+            Pres[d] = score_ps
 
-        	del DeepPS     
+            del DeepPS     
         torch.cuda.empty_cache()
 
     result['DeepBS'] = Bres	
     result['DeepPS'] = Pres
 
-    
-    print(Lambdalist)
-    print(result)
 
-    print(torch.mean(result['DeepBS']), torch.std(result['DeepBS']))
-    print(torch.mean(result['DeepPS']), torch.std(result['DeepPS']))
+    print(np.mean(result['DeepBS']), np.std(result['DeepBS']))
+    print(np.mean(result['DeepPS']), np.std(result['DeepPS']))
     

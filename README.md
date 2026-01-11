@@ -23,6 +23,7 @@ where $\sigma^2 = 0.05$ Var $(y)$.
 
 The user can customize the specific size for training and testing. For instance, we assume the training size = 800 and the testing size = 200.
 
+<!--
 For 1 Layer DPS:
 ```
 python3 DPS_simulation.py --data A --trainsize 800 --testsize 200 --Fin 2 --Fout 1 --nk 15 --nm 50 --rep 100
@@ -32,10 +33,11 @@ For 2 Layer DPS:
 ```
 python3 2DPS_simulation.py --data A --trainsize 800 --testsize 200 --Fin 2 --Fout 1 --nk 15 --nm 50 --rep 100
 ```
+-->
 
-*(Update) For more flexible setting, we can assign specific number of DPS layer "l" by executing following code:*
+*(Update) For more flexible setting, we can assign specific configuration of DPS by executing following code:*
 ```
-python3 main.py --data A --nk 15 --nm 50 --rep 1 --nbl l --trainsize 400
+python3 main.py --data A --nk 15 --hc 50 50 --rep 2 --trainsize 200 --testsize 1000 
 ```
 
 Afterwards, we will calculate the MSPE and its standard deviation over 100 trials with respect to different training size, and the result is summarized below.
@@ -54,10 +56,10 @@ As for Table 4, we consider following equation:
 g^*_1({x})= \left[\prod^p_{i=1}\frac{|4x_i-2|+a_i}{1+a_i}\right],\text{ where }a_i=i/2,i=1,\cdots,p
 ```
 
-In this example, we use the single layer DPS but considering different input dimension from $p=2,6$ and 10. For instance, if we want to run the repeated 10 individual trials when trainsize = 1600, testsize = 200, $p=2$, knot number = 15, neuron number = 50,
+In this example, we use the single layer DPS but considering different input dimension from $p=2,6$ and 10. For instance, if we want to run the repeated 10 individual trials when trainsize = 1600, testsize = 1000, $p=2$, knot number = 15, with configuration [50, 50], we need to implement following code:
 
 ```
-python3 DPS_simulation.py --data B --trainsize 1600 --testsize 200 --Fin 2 --Fout 1 --nk 15 --nm 50 --rep 100
+python3 main.py --data B --Fin 2 --nk 15 --hc 50 50 --rep 10 --trainsize 1600 --testsize 1000
 ```
 
 The above code will return the average MSPE over 10 trials and its standard deviation with $n$ training size. The result is displayed in below table.
@@ -71,10 +73,47 @@ The above code will return the average MSPE over 10 trials and its standard devi
 In the simulation corresponding to Table 5, we evaluate the performance of the proposed DPS method on sparse datasets with input dimensions set to 10, 30, and 50. Even without enforcing sparsity within the DPS model, it consistently outperforms standard DNNs under comparable architectures. Notably, the GCV criterion effectively guides the selection of the optimal architecture among the candidate models. Each experiment is conducted with a training size of 1600 and a testing size of 200, where the input dimension is denoted by $p$, the number of knots by $k$, the number of neurons by $m$, and the number of layers by $l$.
 
 ```
-python3 DPS.py --data A --trainsize 1600 --testsize 200 --Fin p --Fout 1 --nk k --nm m --rep 5 --nl l --lr 1e-1 --nepoch 10000 --fine_tune_epoch 1001
+python3 main.py --data B --nk 15 --hc 50 50 --rep 2 --trainsize 1600 --testsize 200 --lr 1e-1 --fine_tune_nepochs 1000
 ```
 
+## (Updated Simulation)
 
+### Large Dataset
+In the folder `./src/experiments`, we add the script file to implement the DPS on several large dataset.
+
+✅ For California Housing, BikeShare, and Churn, we can refer to .sh file in `./src/scripts`.
+```
+
+module purge
+module load python
+module load pytorch
+
+
+PARAM_LIST=(
+  "--hc 256 128 64 --nk 15 --fine_tune_lr 1e-5 --dropout 0.2 --case ca"
+  "--hc 128 64 32 --nk 15 --fine_tune_lr 1e-6  --dropout 0.2 --case bike"
+  "--hc 128 64 32 --nk 10 --fine_tune_lr 1e-5 --dropout 0.2 --case churn"
+)
+
+
+PARAMS="${PARAM_LIST[$SLURM_ARRAY_TASK_ID]}"
+python3 run_large_exp.py $PARAMS
+```
+
+✅ YearPredictionMSD: 
+```
+cd ./src/experiments
+python3 run_year.py --hc 128 64 32 --nk 10 --lr 5e-3 --fine_tune_lr 1e-5 --dropout 0.2"
+```
+
+where the optimal configuration for each case is stored in `./src/experiments/best_model`
+
+> The benchmark (XGB, DNN, Random Forest) for the large dataset can be found in `Real-Data-Analysis.ipynb` where the (P-Spline, MARS) can be found in `benchmark_Real_Data.R`.
+
+### Model Selection
+We implement how GCV assists on model selection. The example is demonstrated on example 4.1 in the paper where training size $n=200$. We first fixed the configuration as $\{15,15\}$ where for each layer the neuron number candidate $\in\{10, 15, 20\}$ with $3^2$ combinations. In the following figure, we compute the corresponding MSPE. The figure support the statement that the score surface is smooth around the selected fixed $\{W,L\}$-network. In the paper, we simulation 100 times and compute the mean and standard deviation to support the smoothness of the model performance.
+
+![|100](./src/imgs/dps_model_selection_pro.png)
 ## Simulation
 The simulation for *Table 6 and 7*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
 
@@ -102,8 +141,3 @@ For building the surrogate model for chip data, we utilize python and R for conv
 - According to the property of Gaussian process, we can construct the survival function and its confidence interval over its lifespan.
 
 ![|100](./src/imgs/PIplot2.png)
-
-### Appendix H (Model Selection)
-We implement how GCV assists on model selection. The example is demonstrated on example 4.1 in the paper where training size $n=200$. We consider the three-layer DPS where for each layer the neuron number candidate $\in\{10, 15, 20\}$ with $3^3$ combinations. In the following figure, we fixed the neuron number for first layer and the red square points out the best architecture. The optimal model configuration for this example is $\{10, 10, 20\}$.
-
-![|100](./src/imgs/GCV_selection.png)
