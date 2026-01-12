@@ -70,8 +70,8 @@ def main():
 	Dtype = 'A'
 	ndim = 2
 	learning_rate = 1e-1
-	ndf = 20
-	nk = 7
+	ndf = 100
+	nk = 10
 	nbl = 1   
 	Fout = 1
 	data = {}
@@ -206,10 +206,10 @@ def main():
 	result['results2_mspe'] = _result_gcv_mspe
 	result['MSPE1'] = MSPE_1
 	result['MSPE2'] = MSPE_2
-    print(f"Proposed Method | MSPE: {np.mean(MSPE_1):.4f} | STD: {np.std(MSPE_1):.4f}")
-    print(f"Sensitivity Method | MSPE: {np.mean(MSPE_2):.4f} | STD: {np.std(MSPE_2):.4f}")
+	print(f"Proposed Method | MSPE: {np.mean(MSPE_1):.4f} | STD: {np.std(MSPE_1):.4f}")
+	print(f"Sensitivity Method | MSPE: {np.mean(MSPE_2):.4f} | STD: {np.std(MSPE_2):.4f}")
 
-    np.save('./logs/GCV.npy', result) 
+	np.save('./logs/MSPE_compared.npy', result) 
 
 if __name__ == "__main__":
     main()

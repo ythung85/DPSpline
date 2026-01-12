@@ -28,6 +28,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_curve, auc
 
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -313,10 +314,7 @@ class DPS(nn.Module):
 
 class PenaltyScheduler:
     def __init__(self, warm_up_epochs, start_epoch=0):
-        """
-        :param warm_up_epochs: 需要多少個 Epoch 從 0 增加到 100% Penalty
-        :param start_epoch: 從第幾個 Epoch 開始施加 Penalty (在此之前完全不加)
-        """
+        
         self.warm_up_epochs = warm_up_epochs
         self.start_epoch = start_epoch
 
@@ -338,8 +336,6 @@ def freeze_backbone(model):
     for param in model.backbone.parameters():
         param.requires_grad = False
 		
-import torch
-from tqdm import tqdm
 
 class Trainer:
     def __init__(self, model, optimizer, criterion, device, scheduler=None, early_stopping=None):
@@ -352,14 +348,10 @@ class Trainer:
         self.history = {'train_loss': [], 'val_loss': []}
 
     def train_epoch(self, train_loader, penalty_func=None, current_lambdas=None):
-        """
-        執行一個 Epoch 的訓練
-        :param current_lambdas: 已經經過 Warm-up 縮放後的當前 Lambda 值
-        """
+        
         self.model.train()
         running_loss = 0.0
         
-        # 使用 tqdm 顯示進度條
         pbar = tqdm(train_loader, desc="Training", leave=False)
         
         for batch_x, batch_y in pbar:
@@ -371,9 +363,8 @@ class Trainer:
             output = self.model(batch_x)
             loss = self.criterion(output, batch_y)
             
-            # 2. Add Penalty (使用傳入的 current_lambdas)
+            # 2. Add Penalty 
             if penalty_func and current_lambdas is not None:
-                # 這裡傳入的是已經縮放過的 current_lambdas
                 reg_loss = penalty_func(self.model, current_lambdas, self.device)
                 loss += reg_loss
             
@@ -449,22 +440,6 @@ class Trainer:
                 break
                 
         return self.history
-
-
-def evaluation(model, loader):
-    criterion = nn.MSELoss(reduction='mean')
-    total_loss = 0.0
-    num_samples = 0
-    with torch.no_grad(): # Disable gradient calculation for efficiency
-    	for inputs, targets in loader:
-    		outputs = model(inputs)
-    		
-    		loss = criterion(outputs, targets)
-    		total_loss += loss.item() * inputs.size(0)
-    		num_samples += inputs.size(0)
-    		
-    average_loss = total_loss / num_samples
-    print(f"MSE: {average_loss:.4f}")
 
 def evaluation(model, loader):
     criterion = nn.MSELoss(reduction='mean')

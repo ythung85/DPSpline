@@ -38,15 +38,10 @@ class Trainer:
         self.history = {'train_loss': [], 'val_loss': []}
 
     def train_epoch(self, train_loader, penalty_func=None, lambda_vals=None):
-        """
-        執行一個 Epoch 的訓練
-        :param penalty_func: 額外的 Loss 函數 (例如 spline_penalty_loss)
-        :param lambda_vals: Penalty 函數需要的參數
-        """
+        
         self.model.train()
         running_loss = 0.0
         
-        # 使用 tqdm 顯示進度條 (若是全量數據只會跑一次，若是 mini-batch 則會跑多次)
         pbar = tqdm(train_loader, desc="Training", leave=False)
         
         for batch_x, batch_y in pbar:
@@ -59,17 +54,14 @@ class Trainer:
             loss = self.criterion(output, batch_y)
             
 
-            # 2. Add Penalty (如果有的話，例如 DeepPS 階段)
+            # 2. Add Penalty
             if penalty_func:
-                # 注意：通常 Penalty 是針對整個模型的權重，而不是 Batch
-                # 因此這裡直接加上去。若需要除以 dataset size，請在 lambda_vals 中預先處理
                 reg_loss = penalty_func(self.model, lambda_vals, self.device)
                 loss += (reg_loss)
             
             # 3. Backward Pass
             loss.backward()
             
-            # (Optional) Gradient Clipping 增加訓練穩定性
             #torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             
             self.optimizer.step()

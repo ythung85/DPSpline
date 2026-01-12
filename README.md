@@ -101,6 +101,7 @@ python3 run_large_exp.py $PARAMS
 ```
 
 ✅ YearPredictionMSD: 
+> The dataset for YearPredictionMSD is too big so I did not upload to Github. The original code can be downloaded from https://archive.ics.uci.edu/dataset/203/yearpredictionmsd and just move the .txt file to fold `./src/Real_data`, then the code will automatically read the file while running the simulation.
 ```
 cd ./src/experiments
 python3 run_year.py --hc 128 64 32 --nk 10 --lr 5e-3 --fine_tune_lr 1e-5 --dropout 0.2"
@@ -111,9 +112,18 @@ where the optimal configuration for each case is stored in `./src/experiments/be
 > The benchmark (XGB, DNN, Random Forest) for the large dataset can be found in `Real-Data-Analysis.ipynb` where the (P-Spline, MARS) can be found in `benchmark_Real_Data.R`.
 
 ### Model Selection
-We implement how GCV assists on model selection. The example is demonstrated on example 4.1 in the paper where training size $n=200$. We first fixed the configuration as $\{15,15\}$ where for each layer the neuron number candidate $\in\{10, 15, 20\}$ with $3^2$ combinations. In the following figure, we compute the corresponding MSPE. The figure support the statement that the score surface is smooth around the selected fixed $\{W,L\}$-network. In the paper, we simulation 100 times and compute the mean and standard deviation to support the smoothness of the model performance.
+We implement how GCV assists on model selection. The example is demonstrated on example 4.1 in the paper where training size $n=200$. We first fixed the configuration as $\{15,15\}$ where for each layer the neuron number candidate $\in\{10, 15, 20\}$ with $3^2$ combinations. In the following figure, we compute the corresponding MSPE. The figure support the statement that the score surface is smooth around the selected fixed $\{W,L\}$-network.
 
+The notebook `./src/experiments/Simulation-AppendixH.ipynb` demonstrates the generating process of the following figure.
 ![|100](./src/imgs/dps_model_selection_pro.png)
+
+In the paper, we simulation 100 times and compute the mean and standard deviation to support the smoothness of the model performance. To replicate the experiment,
+```
+cd ./src/experiments
+python3 run_ms.py
+```
+The output file recording the MSPE for the simulation will be stored in `./logs/MSPE_compared.npy`. 
+
 ## Simulation
 The simulation for *Table 6 and 7*, *brain tumor image classification*, and *chip data* will be demonstrated in jupyter notebook.
 

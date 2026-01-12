@@ -90,10 +90,9 @@ def main():
     with torch.no_grad(): # Disable gradient calculation for efficiency
     	for inputs, targets in test_loader:
     		outputs = model.predict(pd.DataFrame(inputs))
-    		
     		loss = criterion(torch.tensor(outputs), targets.view(-1))
-    		total_loss += loss.item() * inputs.size(0)
-    		num_samples += inputs.size(0)
+            total_loss += loss.item() * inputs.size(0)
+            num_samples += inputs.size(0)
     		
     average_loss = total_loss / num_samples
     print(f"RMSE: {average_loss:.4f}")
